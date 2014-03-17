@@ -385,7 +385,7 @@ function updateGruntFileWithNewTasks(gruntFileLocation, newTasks, successCb, err
 
         // Add Watch Task
 
-        var stringReplace = " watch: {\n            cordova: {" +
+        var stringReplace = "watch: {\n            cordova: {" +
             "\n                files: [" +
             "\n                    '<%= yeoman.app %>/*.html'," +
             "\n                    '.tmp/styles/{,*/}*.css'," +
@@ -399,7 +399,7 @@ function updateGruntFileWithNewTasks(gruntFileLocation, newTasks, successCb, err
         regex = new RegExp(pattern);
         data = data.replace(regex, stringReplace);
 
-        stringReplace = " copy: {" +
+        stringReplace = "copy: {" +
             "\n            auto: {" +
             "\n                files: [{" +
             "\n                    expand: true," +
