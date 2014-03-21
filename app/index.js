@@ -1,6 +1,7 @@
 'use strict';
 var util = require('util');
 var path = require('path');
+var support = require('./support.js');
 var yeoman = require('yeoman-generator');
 var webappGen = require('generator-webapp');
 var cordovaCLI = require('cordova');
@@ -339,6 +340,13 @@ function updateGruntFile(successCb, errorCb) {
     });
 }
 
+function replaceConfigLabel(data) {
+    if (data.match(/<%= config\.app %>/)) {
+        return data.replace(/<%= yeoman\./g, '<%= config.');
+    }
+    return data;
+};
+
 function updateGruntFileWithNewTasks(gruntFileLocation, newTasks, successCb, errorCb) {
     var fs = require('fs');
     fs.readFile(gruntFileLocation, 'utf8', function (err, data) {
@@ -415,6 +423,9 @@ function updateGruntFileWithNewTasks(gruntFileLocation, newTasks, successCb, err
         pattern = /copy\s*:\s*\{/g;
         regex = new RegExp(pattern);
         data = data.replace(regex, stringReplace);
+
+        // yeoman.app -> config.app
+        data = replaceConfigLabel(data);
 
         fs.writeFile(gruntFileLocation, data, 'utf8', function (err) {
             if (err) {
