@@ -60,14 +60,26 @@ var CordovaGenerator = module.exports = function CordovaGenerator(args, options,
             process.chdir(this.cwd + '/yeoman');
         }
 
-        this.installDependencies(
-            {
-                skipInstall: options['skip-install'],
-                callback: function () {
-                    console.log(howTo);
-                }
+        var mainDependencies = {
+            skipInstall: options['skip-install'],
+            callback: function () {
+                console.log(howTo);
             }
-        );
+        };
+
+        if (this.runwebapp) {
+            var testDependencies = {
+                skipInstall: options['skip-install'],
+                callback: mainDependencies.callback
+            };
+            var self = this;
+            mainDependencies.callback = function () {
+                process.chdir(self.cwd + '/yeoman/test');
+                self.installDependencies(testDependencies);
+            };
+        }
+
+        this.installDependencies(mainDependencies);
     }.bind(this));
 
     this.pkg = JSON.parse(this.readFileAsString(path.join(__dirname, '../package.json')));
