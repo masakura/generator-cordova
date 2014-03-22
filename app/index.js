@@ -12,6 +12,8 @@ var chalk = require('chalk');
 var CordovaGenerator = module.exports = function CordovaGenerator(args, options, config) {
     yeoman.generators.Base.apply(this, arguments);
 
+    this.options = options;
+
     this.on('end', function () {
 
         if (!this.runwebapp) {
@@ -56,18 +58,17 @@ var CordovaGenerator = module.exports = function CordovaGenerator(args, options,
                 chalk.cyan('\n      `grunt live-emulate --platform=') + chalk.magenta('ios') + chalk.cyan(' --family=') + chalk.magenta('ipad') + chalk.cyan('`') +
                 '\n';
 
+            this.installDependencies(
+                {
+                    skipInstall: options['skip-install'],
+                    callback: function () {
+                        console.log(howTo);
+                    }
+                }
+            );
         } else {
             process.chdir(this.cwd + '/yeoman');
         }
-
-        this.installDependencies(
-            {
-                skipInstall: options['skip-install'],
-                callback: function () {
-                    console.log(howTo);
-                }
-            }
-        );
     }.bind(this));
 
     this.pkg = JSON.parse(this.readFileAsString(path.join(__dirname, '../package.json')));
@@ -275,23 +276,12 @@ CordovaGenerator.prototype.runYeomanWebApp = function runYeomanWebApp() {
         process.chdir(this.cwd + '/yeoman');
         var that = this;
 
-        this.env.run('webapp', { 'skip-welcome-message': true, 'skip-install': true, 'skip-install-message': true}, function () {
-            updatePackageFile.bind(that)(function () {
-                // Success
-                updateGruntFile.bind(that)(function () {
-                    // Success
-                    process.chdir(that.cwd);
-                    cb();
-                }, function (err) {
-                    // Error
-                    console.error('Ooops. There was a problem reading Gruntfile.js: ' + err);
-                    process.exit(1);
-                });
-            }, function (err) {
-                // Error
-                console.error('Ooops. There was a problem reading package.json: ' + err);
-                process.exit(1);
-            });
+        var webapp = this.env.run('webapp', this.options);
+        webapp.on('install', function () {
+            updatePackageFile.bind(that)();
+            updateGruntFile.bind(that)();
+            process.chdir(that.cwd);
+            cb();
         });
     } catch (err) {
         console.error('Failed to run Yeoman Generator: ' + err);
@@ -299,45 +289,30 @@ CordovaGenerator.prototype.runYeomanWebApp = function runYeomanWebApp() {
     }
 };
 
-function updatePackageFile(successCb, errorCb) {
+function updatePackageFileText(data) {
+    // Add cordova to package list
+    var pattern = /"devDependencies"\s*:\s*{/g;
+    var regex = new RegExp(pattern);
+    return data.replace(regex, '\"devDependencies\": {\n    \"cordova\": \"~3.0.4\",');
+}
+
+function updatePackageFile() {
     console.log('Updating the package.json file');
     var fs = require('fs');
     var fileLocation = this.cwd + '/yeoman/package.json';
 
-    fs.readFile(fileLocation, 'utf8', function (err, data) {
-        if (err) {
-            errorCb(err);
-            return;
-        }
-
-        // Add cordova to package list
-        var pattern = /"devDependencies"\s*:\s*{/g;
-        var regex = new RegExp(pattern);
-        data = data.replace(regex, "\"devDependencies\": {\n    \"cordova\": \"~3.0.4\",");
-
-        fs.writeFile(fileLocation, data, 'utf8', function (err) {
-            if (err) {
-                errorCb(err);
-            }
-
-            successCb();
-        });
-    });
+    var data = fs.readFileSync(fileLocation, 'utf8');
+    data = updatePackageFileText(data);
+    fs.writeFileSync(fileLocation, data, 'utf8');
 }
 
-function updateGruntFile(successCb, errorCb) {
+function updateGruntFile() {
     console.log('Updating Gruntfile.js');
     var fs = require('fs');
     var gruntFileLocation = this.cwd + '/yeoman/Gruntfile.js';
 
-    fs.readFile(this.sourceRoot() + '/GruntTasks.js', 'utf8', function (err, data) {
-        if (err) {
-            errorCb(err);
-            return;
-        }
-
-        updateGruntFileWithNewTasks(gruntFileLocation, data, successCb, errorCb);
-    });
+    var data = fs.readFileSync(this.sourceRoot() + '/GruntTasks.js', 'utf8');
+    updateGruntFileWithNewTasks(gruntFileLocation, data);
 }
 
 function replaceConfigLabel(data) {
@@ -347,94 +322,87 @@ function replaceConfigLabel(data) {
     return data;
 };
 
-function updateGruntFileWithNewTasks(gruntFileLocation, newTasks, successCb, errorCb) {
+function updateGruntFileWithNewTasksText(data, newTasks) {
+    // Swap out dist directory for www
+    var pattern = /dist\s*:\s*'dist'/g;
+    var regex = new RegExp(pattern);
+    data = data.replace(regex, "dist: '../www'");
+
+    // Force the clean to work in www
+    pattern = /clean\s*:\s*{\s*dist\s*:\s*{/g;
+    regex = new RegExp(pattern);
+    data = data.replace(regex, "clean: {\n            options: {\n                force: true\n            },\n            dist: {");
+
+    // Include the xml config file for copying over
+    pattern = /.{ico,png,txt}/g;
+    regex = new RegExp(pattern);
+    data = data.replace(regex, ".{ico,png,txt,xml}");
+
+    // Require Cordova module
+    pattern = /'use strict'\s*;/g;
+    regex = new RegExp(pattern);
+    data = data.replace(regex, "'use strict';\nvar cordova = require('cordova');");
+
+    // Add Cordova Config
+    pattern = /grunt.initConfig\(/g;
+    regex = new RegExp(pattern);
+    data = data.replace(regex, "var cordovaConfig = {\n        platform: grunt.option('platform')\n    };\n\n    grunt.initConfig(");
+
+    // Rename the current build task to buildWeb
+    pattern = /grunt.registerTask\(\s*'build'\s*,/g;
+    regex = new RegExp(pattern);
+    data = data.replace(regex, "grunt.registerTask('buildweb',");
+
+    // Add Additional Tasks
+    // Rename the current build task to buildWeb
+    pattern = /grunt.registerTask\(\s*'default'\s*,/g;
+    regex = new RegExp(pattern);
+    data = data.replace(regex, newTasks + "\n\n    grunt.registerTask('default',");
+
+    // Add Watch Task
+
+    var stringReplace = "watch: {\n            cordova: {" +
+        "\n                files: [" +
+        "\n                    '<%= yeoman.app %>/*.html'," +
+        "\n                    '.tmp/styles/{,*/}*.css'," +
+        "\n                    '{.tmp,<%= yeoman.app %>}/scripts/{,*/}*.js'," +
+        "\n                    '<%= yeoman.app %>/images/{,*/}*.{png,jpg,jpeg,gif,webp,svg}'" +
+        "\n                ]," +
+        "\n                tasks: ['copy:auto', 'cordova-prepare']" +
+        "\n            },";
+
+    pattern = /watch\s*:\s*\{/g;
+    regex = new RegExp(pattern);
+    data = data.replace(regex, stringReplace);
+
+    stringReplace = "copy: {" +
+        "\n            auto: {" +
+        "\n                files: [{" +
+        "\n                    expand: true," +
+        "\n                    dot: true," +
+        "\n                    cwd: '<%= yeoman.app %>'," +
+        "\n                    dest: '<%= yeoman.dist %>'," +
+        "\n                    src: [" +
+        "\n                        '{,*/}*.*'" +
+        "\n                    ]" +
+        "\n                }]" +
+        "\n            },";
+
+    pattern = /copy\s*:\s*\{/g;
+    regex = new RegExp(pattern);
+    data = data.replace(regex, stringReplace);
+
+    // yeoman.app -> config.app
+    data = replaceConfigLabel(data);
+
+    return data;
+}
+
+function updateGruntFileWithNewTasks(gruntFileLocation, newTasks) {
     var fs = require('fs');
-    fs.readFile(gruntFileLocation, 'utf8', function (err, data) {
-        if (err) {
-            errorCb(err);
-            return;
-        }
-
-        // Swap out dist directory for www
-        var pattern = /dist\s*:\s*'dist'/g;
-        var regex = new RegExp(pattern);
-        data = data.replace(regex, "dist: '../www'");
-
-        // Force the clean to work in www
-        pattern = /clean\s*:\s*{\s*dist\s*:\s*{/g;
-        regex = new RegExp(pattern);
-        data = data.replace(regex, "clean: {\n            options: {\n                force: true\n            },\n            dist: {");
-
-        // Include the xml config file for copying over
-        pattern = /.{ico,png,txt}/g;
-        regex = new RegExp(pattern);
-        data = data.replace(regex, ".{ico,png,txt,xml}");
-
-        // Require Cordova module
-        pattern = /'use strict'\s*;/g;
-        regex = new RegExp(pattern);
-        data = data.replace(regex, "'use strict';\nvar cordova = require('cordova');");
-
-        // Add Cordova Config
-        pattern = /grunt.initConfig\(/g;
-        regex = new RegExp(pattern);
-        data = data.replace(regex, "var cordovaConfig = {\n        platform: grunt.option('platform')\n    };\n\n    grunt.initConfig(");
-
-        // Rename the current build task to buildWeb
-        pattern = /grunt.registerTask\(\s*'build'\s*,/g;
-        regex = new RegExp(pattern);
-        data = data.replace(regex, "grunt.registerTask('buildweb',");
-
-        // Add Additional Tasks
-        // Rename the current build task to buildWeb
-        pattern = /grunt.registerTask\(\s*'default'\s*,/g;
-        regex = new RegExp(pattern);
-        data = data.replace(regex, newTasks + "\n\n    grunt.registerTask('default',");
-
-        // Add Watch Task
-
-        var stringReplace = "watch: {\n            cordova: {" +
-            "\n                files: [" +
-            "\n                    '<%= yeoman.app %>/*.html'," +
-            "\n                    '.tmp/styles/{,*/}*.css'," +
-            "\n                    '{.tmp,<%= yeoman.app %>}/scripts/{,*/}*.js'," +
-            "\n                    '<%= yeoman.app %>/images/{,*/}*.{png,jpg,jpeg,gif,webp,svg}'" +
-            "\n                ]," +
-            "\n                tasks: ['copy:auto', 'cordova-prepare']" +
-            "\n            },";
-
-        pattern = /watch\s*:\s*\{/g;
-        regex = new RegExp(pattern);
-        data = data.replace(regex, stringReplace);
-
-        stringReplace = "copy: {" +
-            "\n            auto: {" +
-            "\n                files: [{" +
-            "\n                    expand: true," +
-            "\n                    dot: true," +
-            "\n                    cwd: '<%= yeoman.app %>'," +
-            "\n                    dest: '<%= yeoman.dist %>'," +
-            "\n                    src: [" +
-            "\n                        '{,*/}*.*'" +
-            "\n                    ]" +
-            "\n                }]" +
-            "\n            },";
-
-        pattern = /copy\s*:\s*\{/g;
-        regex = new RegExp(pattern);
-        data = data.replace(regex, stringReplace);
-
-        // yeoman.app -> config.app
-        data = replaceConfigLabel(data);
-
-        fs.writeFile(gruntFileLocation, data, 'utf8', function (err) {
-            if (err) {
-                errorCb(err);
-            }
-
-            successCb();
-        });
-    });
+    var data = fs.readFileSync(gruntFileLocation, 'utf8');
+    data = updateGruntFileWithNewTasksText(data, newTasks);
+    fs.writeFileSync(gruntFileLocation, data, 'utf8');
 }
 
 CordovaGenerator.prototype.app = function app() {
