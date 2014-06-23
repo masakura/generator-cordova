@@ -1,21 +1,21 @@
 {
-  "name": "generator-cordova",
+  "name": "generator-cordova-alternate",
   "version": "0.0.5",
   "description": "A generator for Yeoman",
   "keywords": [
     "yeoman-generator"
   ],
-  "homepage": "https://github.com/dangeross/generator-cordova",
-  "bugs": "https://github.com/dangeross/generator-cordova/issues",
+  "homepage": "https://github.com/masakura/generator-cordova",
+  "bugs": "https://github.com/masakura/generator-cordova/issues",
   "author": {
-    "name": "Ross Savage",
-    "email": "mr.dangeross@googlemail.com",
-    "url": "https://github.com/dangeross"
+    "name": "Tomo Masakura",
+    "email": "tomo.masakura@gmail.com",
+    "url": "https://github.com/masakura"
   },
   "main": "app/index.js",
   "repository": {
     "type": "git",
-    "url": "git://github.com/dangeross/generator-cordova.git"
+    "url": "git://github.com/masakura/generator-cordova.git"
   },
   "scripts": {
     "test": "mocha"
